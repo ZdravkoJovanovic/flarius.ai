@@ -133,16 +133,23 @@ export default function Whiteboard() {
         });
         
         if (response.ok) {
-          console.log('Nachricht erfolgreich gesendet');
+          const data = await response.json();
+          console.log('Antwort von der API:', data);
+          
+          // KI-Antwort zur Nachrichtenliste hinzufügen
+          if (data.success && data.response) {
+            setMessages(prev => [...prev, {text: data.response, isUser: false}]);
+          } else {
+            setMessages(prev => [...prev, {text: 'Fehler beim Empfangen der Antwort', isUser: false}]);
+          }
+        } else {
+          console.error('Fehler vom Server:', response.status);
+          setMessages(prev => [...prev, {text: 'Serverfehler', isUser: false}]);
         }
       } catch (error) {
         console.error('Fehler beim Senden der Nachricht:', error);
+        setMessages(prev => [...prev, {text: 'Netzwerkfehler', isUser: false}]);
       }
-      
-      // KI-Antwort simulieren (hier später mit echter KI-Integration ersetzen)
-      setTimeout(() => {
-        setMessages(prev => [...prev, {text: `Antwort auf: ${inputValue}`, isUser: false}]);
-      }, 1000);
       
       setInputValue('');
       if (textareaRef.current) {
