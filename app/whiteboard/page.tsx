@@ -3,9 +3,40 @@
 import { useRef, useEffect, useState } from 'react';
 import { FaArrowUp, FaExchangeAlt } from 'react-icons/fa';
 
+// Funktion zum Zeichnen von Text mit Zeilenumbrüchen
+const drawWrappedText = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number
+) => {
+  const words = text.split(' ');
+  let line = '';
+  let currentY = y;
+
+  for (let i = 0; i < words.length; i++) {
+    const testLine = line + words[i] + ' ';
+    const metrics = ctx.measureText(testLine);
+    const testWidth = metrics.width;
+    
+    if (testWidth > maxWidth && i > 0) {
+      ctx.fillText(line, x, currentY);
+      line = words[i] + ' ';
+      currentY += lineHeight;
+    } else {
+      line = testLine;
+    }
+  }
+  ctx.fillText(line, x, currentY);
+  return currentY + lineHeight;
+};
+
 export default function Whiteboard() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   
   // Zustände für den Chat-Input
@@ -16,6 +47,9 @@ export default function Whiteboard() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const MAX_HEIGHT = 120;
+
+  // Referenz für den zuletzt gezeichneten Textbereich
+  const lastTextAreaRef = useRef<{x: number, y: number, width: number, height: number} | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -114,6 +148,32 @@ export default function Whiteboard() {
     setIsDrawing(false);
   };
 
+  // Funktion zum Zeichnen des Gitters in einem bestimmten Bereich
+  const drawGridArea = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) => {
+    ctx.strokeStyle = '#333333';
+    ctx.lineWidth = 1;
+    
+    // Vertikale Linien im Bereich zeichnen
+    const startX = Math.floor(x / 20) * 20;
+    const endX = Math.ceil((x + width) / 20) * 20;
+    for (let xLine = startX; xLine <= endX; xLine += 20) {
+      ctx.beginPath();
+      ctx.moveTo(xLine, y);
+      ctx.lineTo(xLine, y + height);
+      ctx.stroke();
+    }
+    
+    // Horizontale Linien im Bereich zeichnen
+    const startY = Math.floor(y / 20) * 20;
+    const endY = Math.ceil((y + height) / 20) * 20;
+    for (let yLine = startY; yLine <= endY; yLine += 20) {
+      ctx.beginPath();
+      ctx.moveTo(x, yLine);
+      ctx.lineTo(x + width, yLine);
+      ctx.stroke();
+    }
+  };
+
   // Funktionen für den Chat-Input
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,6 +199,53 @@ export default function Whiteboard() {
           // KI-Antwort zur Nachrichtenliste hinzufügen
           if (data.success && data.response) {
             setMessages(prev => [...prev, {text: data.response, isUser: false}]);
+            
+            // KI-Antwort auf dem Whiteboard anzeigen
+            const canvas = canvasRef.current;
+            if (canvas) {
+              const context = canvas.getContext('2d');
+              if (context) {
+                // Vorherigen Textbereich löschen, falls vorhanden
+                if (lastTextAreaRef.current) {
+                  const { x, y, width, height } = lastTextAreaRef.current;
+                  
+                  // Lösche nur den Textbereich, nicht das gesamte Gitter
+                  context.clearRect(x - 5, y - 5, width + 10, height + 10);
+                  
+                  // Zeichne das Gitter im gelöschten Bereich neu
+                  drawGridArea(context, x - 5, y - 5, width + 10, height + 10);
+                }
+                
+                // Textstil setzen
+                context.font = '18px Arial';
+                context.fillStyle = '#FFFFFF';
+                context.textBaseline = 'top';
+                
+                // Text mit Zeilenumbrüchen zeichnen
+                const textX = 50;
+                const textY = 100; // Unter der Navbar
+                
+                // Maximale Breite basierend auf der Position des Chat-Fensters berechnen
+                let maxWidth = canvas.width - textX - 20;
+                if (chatContainerRef.current) {
+                  const chatRect = chatContainerRef.current.getBoundingClientRect();
+                  const canvasRect = canvas.getBoundingClientRect();
+                  const chatLeftRelative = chatRect.left - canvasRect.left;
+                  maxWidth = chatLeftRelative - textX - 20; // 20px Abstand
+                }
+                
+                // Text zeichnen und Bereich speichern
+                const textHeight = drawWrappedText(context, data.response, textX, textY, maxWidth, 24);
+                
+                // Bereich des gezeichneten Textes speichern
+                lastTextAreaRef.current = {
+                  x: textX,
+                  y: textY,
+                  width: maxWidth,
+                  height: textHeight - textY
+                };
+              }
+            }
           } else {
             setMessages(prev => [...prev, {text: 'Fehler beim Empfangen der Antwort', isUser: false}]);
           }
@@ -221,7 +328,10 @@ export default function Whiteboard() {
         </div>
         
         {/* Chat-Input als Overlay auf der rechten Seite */}
-        <div className="absolute right-8 top-8 bottom-8 w-80 flex flex-col bg-[#151517] rounded-xl p-4">
+        <div 
+          ref={chatContainerRef}
+          className="absolute right-8 top-8 bottom-8 w-80 flex flex-col bg-[#151517] rounded-xl p-4"
+        >
           {/* Anmelden-Button im oberen Bereich des AI-Feldes - jetzt zentriert */}
           <div className="flex justify-center mb-4 border-b-2 border-gray-600 py-3">
             <a
