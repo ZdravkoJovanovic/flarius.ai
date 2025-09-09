@@ -3,33 +3,60 @@
 import { useRef, useEffect, useState } from 'react';
 import { FaArrowUp, FaExchangeAlt } from 'react-icons/fa';
 
-// Funktion zum Zeichnen von Text mit Zeilenumbrüchen
-const drawWrappedText = (
+// Funktion zum Zeichnen von Text mit Zeilenumbrüchen und Animation
+const drawWrappedTextAnimated = (
   ctx: CanvasRenderingContext2D,
   text: string,
   x: number,
   y: number,
   maxWidth: number,
-  lineHeight: number
+  lineHeight: number,
+  onComplete: () => void
 ) => {
   const words = text.split(' ');
   let line = '';
   let currentY = y;
+  let currentIndex = 0;
+  let currentLine = 0;
+  const lines: string[] = [];
 
+  // Text zuerst in Zeilen aufteilen
   for (let i = 0; i < words.length; i++) {
     const testLine = line + words[i] + ' ';
     const metrics = ctx.measureText(testLine);
     const testWidth = metrics.width;
     
     if (testWidth > maxWidth && i > 0) {
-      ctx.fillText(line, x, currentY);
+      lines.push(line);
       line = words[i] + ' ';
-      currentY += lineHeight;
     } else {
       line = testLine;
     }
   }
-  ctx.fillText(line, x, currentY);
+  lines.push(line);
+
+  // Animation für jede Zeile
+  const animateLine = () => {
+    if (currentLine >= lines.length) {
+      onComplete();
+      return;
+    }
+
+    const currentText = lines[currentLine];
+    if (currentIndex <= currentText.length) {
+      const displayText = currentText.substring(0, currentIndex);
+      ctx.fillText(displayText, x, currentY);
+      currentIndex++;
+      setTimeout(animateLine, 30); // Geschwindigkeit der Animation anpassen
+    } else {
+      currentIndex = 0;
+      currentLine++;
+      currentY += lineHeight;
+      setTimeout(animateLine, 100); // Pause zwischen den Zeilen
+    }
+  };
+
+  animateLine();
   return currentY + lineHeight;
 };
 
@@ -50,6 +77,7 @@ export default function Whiteboard() {
 
   // Referenz für den zuletzt gezeichneten Textbereich
   const lastTextAreaRef = useRef<{x: number, y: number, width: number, height: number} | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -109,6 +137,8 @@ export default function Whiteboard() {
 
   // Funktionen für das Whiteboard
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (isAnimating) return; // Verhindere Zeichnen während der Animation
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -129,7 +159,7 @@ export default function Whiteboard() {
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
+    if (!isDrawing || isAnimating) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -177,7 +207,7 @@ export default function Whiteboard() {
   // Funktionen für den Chat-Input
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputValue.trim() && !maxLimitReached) {
+    if (inputValue.trim() && !maxLimitReached && !isAnimating) {
       // Benutzernachricht hinzufügen
       const userMessage = {text: inputValue, isUser: true};
       setMessages([...messages, userMessage]);
@@ -205,6 +235,8 @@ export default function Whiteboard() {
             if (canvas) {
               const context = canvas.getContext('2d');
               if (context) {
+                setIsAnimating(true);
+                
                 // Vorherigen Textbereich löschen, falls vorhanden
                 if (lastTextAreaRef.current) {
                   const { x, y, width, height } = lastTextAreaRef.current;
@@ -216,8 +248,8 @@ export default function Whiteboard() {
                   drawGridArea(context, x - 5, y - 5, width + 10, height + 10);
                 }
                 
-                // Textstil setzen
-                context.font = '18px Arial';
+                // Handschrift-ähnlicher Textstil
+                context.font = 'normal 20px "Comic Sans MS", cursive, sans-serif'; // Fetter, handgeschriebener Stil
                 context.fillStyle = '#FFFFFF';
                 context.textBaseline = 'top';
                 
@@ -234,16 +266,28 @@ export default function Whiteboard() {
                   maxWidth = chatLeftRelative - textX - 20; // 20px Abstand
                 }
                 
-                // Text zeichnen und Bereich speichern
-                const textHeight = drawWrappedText(context, data.response, textX, textY, maxWidth, 24);
-                
-                // Bereich des gezeichneten Textes speichern
-                lastTextAreaRef.current = {
-                  x: textX,
-                  y: textY,
-                  width: maxWidth,
-                  height: textHeight - textY
-                };
+                // Text animiert zeichnen und Bereich speichern
+                const textHeight = drawWrappedTextAnimated(
+                  context, 
+                  data.response, 
+                  textX, 
+                  textY, 
+                  maxWidth, 
+                  28, // Größerer Zeilenabstand für bessere Lesbarkeit
+                  () => {
+                    // Animation abgeschlossen
+                    setIsAnimating(false);
+                    
+                    // Bereich des gezeichneten Textes speichern
+                    const metrics = context.measureText(data.response);
+                    lastTextAreaRef.current = {
+                      x: textX,
+                      y: textY,
+                      width: Math.min(metrics.width, maxWidth),
+                      height: textHeight - textY
+                    };
+                  }
+                );
               }
             }
           } else {
@@ -402,7 +446,7 @@ export default function Whiteboard() {
                   
                   <button
                     type="submit"
-                    disabled={!inputValue.trim() || maxLimitReached}
+                    disabled={!inputValue.trim() || maxLimitReached || isAnimating}
                     className="flex items-center justify-center h-10 w-10 rounded-full hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     <FaArrowUp className="text-gray-300" />
