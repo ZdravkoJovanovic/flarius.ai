@@ -12,7 +12,9 @@ export default function Whiteboard() {
   const [inputValue, setInputValue] = useState('');
   const [mode, setMode] = useState<'learning' | 'exam'>('learning');
   const [maxLimitReached, setMaxLimitReached] = useState(false);
+  const [messages, setMessages] = useState<{text: string, isUser: boolean}[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const MAX_HEIGHT = 120;
 
   useEffect(() => {
@@ -113,10 +115,35 @@ export default function Whiteboard() {
   };
 
   // Funktionen für den Chat-Input
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (inputValue.trim() && !maxLimitReached) {
-      console.log('Eingabe gesendet:', inputValue);
+      // Benutzernachricht hinzufügen
+      const userMessage = {text: inputValue, isUser: true};
+      setMessages([...messages, userMessage]);
+      
+      // Nachricht an API-Route senden
+      try {
+        const response = await fetch('/api', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ message: inputValue }),
+        });
+        
+        if (response.ok) {
+          console.log('Nachricht erfolgreich gesendet');
+        }
+      } catch (error) {
+        console.error('Fehler beim Senden der Nachricht:', error);
+      }
+      
+      // KI-Antwort simulieren (hier später mit echter KI-Integration ersetzen)
+      setTimeout(() => {
+        setMessages(prev => [...prev, {text: `Antwort auf: ${inputValue}`, isUser: false}]);
+      }, 1000);
+      
       setInputValue('');
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
@@ -152,6 +179,11 @@ export default function Whiteboard() {
       }
     }
   }, [inputValue]);
+
+  // Scroll zum Ende der Nachrichten
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   return (
     <div className="font-sans flex flex-col bg-black h-screen">
@@ -192,6 +224,27 @@ export default function Whiteboard() {
             >
               Anmelden
             </a>
+          </div>
+          
+          {/* Nachrichten-Container mit unsichtbarer Scrollbar */}
+          <div className="flex-1 overflow-y-auto mb-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            {messages.map((message, index) => (
+              <div 
+                key={index} 
+                className={`mb-4 ${message.isUser ? 'text-right' : 'text-left'}`}
+              >
+                <div 
+                  className={`inline-block p-3 rounded-lg max-w-xs ${
+                    message.isUser 
+                      ? 'bg-[#2c2c2e] text-white' 
+                      : 'bg-[#1b1b1c] text-white'
+                  }`}
+                >
+                  {message.text}
+                </div>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
           </div>
           
           {/* Formular-Inhalt nach unten verschoben */}
